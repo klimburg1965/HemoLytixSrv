@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full bg-slate-100 text-slate-900">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HemoLytix Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body class="h-full flex flex-col font-sans selection:bg-blue-500 selection:text-white">
+
+<!-- Top Navigation -->
+<header class="border-b border-slate-200 bg-white/80 backdrop-blur-md sticky top-0 z-50 shadow-xs">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white shadow-xs">H</div>
+            <h1 class="font-semibold text-lg tracking-tight text-slate-900">HemoLytix <span class="text-xs text-blue-600 font-normal ml-1">v3.3 Web</span></h1>
+        </div>
+        <div class="flex items-center space-x-4">
+            <a href="/swagger-ui/index.html" target="_blank" class="text-xs text-slate-500 hover:text-slate-800 transition">Swagger API</a>
+            <button id="logout-btn" onclick="logout()" class="text-xs bg-white hover:bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg transition border border-slate-300 shadow-xs">Abmelden</button>
+        </div>
+    </div>
+</header>
+
+<!-- Main Content Area -->
+<main class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 md:grid-cols-3 gap-6 overflow-hidden">
+
+    <!-- Left Column: Patient List -->
+    <section class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col h-[calc(100vh-7rem)] shadow-xs">
+        <div class="flex justify-between items-center mb-3">
+            <h2 class="font-medium text-sm text-slate-700">Patienten</h2>
+            <span id="patient-count" class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">0</span>
+        </div>
+        <div id="patient-list" class="flex-1 overflow-y-auto space-y-2 pr-1">
+            <p class="text-sm text-slate-400">Lade Patienten...</p>
+        </div>
+    </section>
+
+    <!-- Right / Middle Column: Details & Chart -->
+    <section class="md:col-span-2 flex flex-col overflow-y-auto h-[calc(100vh-7rem)] pr-1">
+        <!-- Detailansicht / Patient Details Container -->
+        <div id="patient-detail-view" class="bg-white border border-slate-200 rounded-2xl p-6 flex-1 flex flex-col items-center justify-center text-center shadow-xs">
+            <p class="text-sm text-slate-400">Wähle links einen Patienten aus, um Details anzuzeigen.</p>
+        </div>
+    </section>
+
+</main>
+
+<!-- Simple Login Modal -->
+<div id="login-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-white border border-slate-200 p-6 rounded-2xl w-full max-w-md shadow-xl">
+        <h2 class="text-lg font-semibold mb-4 text-slate-900">HemoLytix Anmeldung</h2>
+        <form onsubmit="handleLogin(event)" class="space-y-4">
+            <div>
+                <label class="block text-xs text-slate-600 mb-1">Benutzername</label>
+                <input type="text" id="login-username" required value="admin" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+            </div>
+            <div>
+                <label class="block text-xs text-slate-600 mb-1">Passwort</label>
+                <input type="password" id="login-password" required value="admin123" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+            </div>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm py-2.5 rounded-lg transition mt-2 shadow-xs">Anmelden</button>
+        </form>
+    </div>
+</div>
+
+<!-- JavaScript Client Logic -->
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const token = localStorage.getItem('jwt_token');
+        if (!token) {
+            document.getElementById('login-modal').classList.remove('hidden');
+        } else {
+            loadPatients();
+        }
+    });
+
+    async function handleLogin(event) {
+        event.preventDefault();
+        const username = document.getElementById('login-username').value;
+        const password = document.getElementById('login-password').value;
+
+        try {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            if (!response.ok) throw new Error('Anmeldung fehlgeschlagen');
+
+            const data = await response.json();
+            localStorage.setItem('jwt_token', data.token);
+            document.getElementById('login-modal').classList.add('hidden');
+            loadPatients();
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('jwt_token');
+
+        // Felder im Login-Dialog leeren
+        document.getElementById('login-username').value = '';
+        document.getElementById('login-password').value = '';
+
+        // Login-Modal wieder einblenden
+        document.getElementById('login-modal').classList.remove('hidden');
+
+        // Ansicht zurücksetzen
+        document.getElementById('patient-list').innerHTML = '<p class="text-sm text-slate-400 p-2">Bitte anmelden.</p>';
+        const detailView = document.getElementById('patient-detail-view');
+        detailView.className = "bg-white border border-slate-200 rounded-2xl p-6 flex-1 flex flex-col items-center justify-center text-center shadow-xs";
+        detailView.innerHTML = '<p class="text-sm text-slate-400">Wähle links einen Patienten aus, um Details anzuzeigen.</p>';
+    }
+
+    async function fetchWithAuth(url, options = {}) {
+        const token = localStorage.getItem('jwt_token');
+        options.headers = {
+            ...options.headers,
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        };
+        return fetch(url, options);
+    }
+
+    async function loadPatients() {
+        const listEl = document.getElementById('patient-list');
+        listEl.innerHTML = '<p class="text-sm text-slate-400 p-2">Lade Patienten...</p>';
+
+        try {
+            const response = await fetchWithAuth('/api/v1/patients');
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
+            }
+
+            const data = await response.json();
+            const patients = Array.isArray(data) ? data : (data.content || []);
+
+            document.getElementById('patient-count').textContent = patients.length;
+
+            if (patients.length === 0) {
+                listEl.innerHTML = '<p class="text-sm text-slate-400 p-2">Keine Patienten gefunden.</p>';
+                return;
+            }
+
+            listEl.innerHTML = patients.map(p => `
+                <div onclick="selectPatient(${p.id})" class="bg-slate-50 hover:bg-blue-50/50 transition p-3 rounded-xl border border-slate-200 flex justify-between items-center cursor-pointer shadow-2xs">
+                    <div>
+                        <p class="font-medium text-sm text-slate-800">${p.firstName} ${p.lastName}</p>
+                        <p class="text-xs text-slate-400">Geb: ${p.birthDate || 'N/A'}</p>
+                    </div>
+                    <span class="text-xs bg-white border border-slate-200 text-slate-600 px-2 py-1 rounded font-medium">ID: ${p.id}</span>
+                </div>
+            `).join('');
+
+        } catch (err) {
+            console.error("Fehler beim Laden der Patienten:", err);
+            listEl.innerHTML = `<p class="text-sm text-red-500 p-2 bg-red-50 rounded border border-red-200"><strong>Ladefehler:</strong> ${err.message}</p>`;
+        }
+    }
+
+    let bloodChart = null;
+
+    async function selectPatient(patientId) {
+        const detailContainer = document.getElementById('patient-detail-view');
+        detailContainer.className = "bg-white border border-slate-200 rounded-2xl p-6 flex-1 flex flex-col text-left overflow-y-auto shadow-xs";
+        detailContainer.innerHTML = '<p class="text-sm text-slate-400 text-center py-6">Lade Patientendetails und Blutwerte...</p>';
+
+        try {
+            // 1. Patientendetails laden
+            const patientResponse = await fetchWithAuth(`/api/v1/patients/${patientId}`);
+            if (!patientResponse.ok) throw new Error('Fehler beim Laden der Patientendetails');
+            const p = await patientResponse.json();
+
+            // 2. Blutbild-Historie laden
+            const bloodResponse = await fetchWithAuth(`/api/v1/patients/${patientId}/complete-blood-counts`);
+            const bloodData = bloodResponse.ok ? await bloodResponse.json() : [];
+
+            const addressText = p.address
+                ? `${p.address.street || ''}, ${p.address.zipCode || ''} ${p.address.city || ''}`
+                : 'Keine Adresse hinterlegt';
+
+            // HTML-Struktur mit Chart und dem Formular für neuen Patienten UNTER dem Diagramm
+            detailContainer.innerHTML = `
+                <div class="w-full space-y-6">
+                    <div class="flex justify-between items-start border-b border-slate-100 pb-3">
+                        <div>
+                            <h3 class="text-base font-semibold text-slate-900">${p.firstName} ${p.lastName}</h3>
+                            <p class="text-xs text-slate-500 mt-0.5">ID: ${p.id} • Geburtsdatum: ${p.birthDate || 'N/A'} • Geschlecht: ${p.gender || 'N/A'}</p>
+                        </div>
+                        <span class="text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200 font-medium">Aktiv</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <h4 class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Adresse & Kontaktdaten</h4>
+                            <p class="text-sm text-slate-700">${addressText}</p>
+                        </div>
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <h4 class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Statistik</h4>
+                            <p class="text-sm text-slate-600">Analysen gesamt: <span class="text-slate-900 font-semibold">${bloodData.length || 0}</span></p>
+                        </div>
+                    </div>
+
+                    <!-- Diagramm Container -->
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mt-4">
+                        <h4 class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">Laborwerte-Verlauf</h4>
+                        <div class="h-64 w-full relative">
+                            <canvas id="bloodValueChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Patient Creation Form (jetzt unter dem Diagramm platziert) -->
+                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-5 mt-6">
+                        <h4 class="font-medium text-xs text-slate-700 uppercase tracking-wider mb-4">Neuen Patienten anlegen</h4>
+                        <form id="patient-form" onsubmit="handleCreatePatient(event)" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Vorname</label>
+                                <input type="text" id="firstName" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Nachname</label>
+                                <input type="text" id="lastName" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Geburtsdatum</label>
+                                <input type="date" id="birthDate" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Geschlecht</label>
+                                <select id="gender" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    <option value="MALE">Männlich</option>
+                                    <option value="FEMALE">Weiblich</option>
+                                    <option value="OTHER">Divers</option>
+                                </select>
+                            </div>
+                            <div class="sm:col-span-2 flex justify-end mt-2">
+                                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs px-4 py-2 rounded-lg transition shadow-xs">Patient speichern</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+
+            renderBloodChart(bloodData);
+
+        } catch (err) {
+            console.error(err);
+            detailContainer.innerHTML = `<p class="text-sm text-red-500 text-center py-6">Fehler beim Laden der Details.</p>`;
+        }
+    }
+
+    function renderBloodChart(bloodData) {
+        const ctx = document.getElementById('bloodValueChart').getContext('2d');
+
+        if (bloodChart) {
+            bloodChart.destroy();
+        }
+
+        if (!Array.isArray(bloodData) || bloodData.length === 0) {
+            console.warn("Keine Blutbild-Daten vorhanden.");
+            return;
+        }
+
+        const labels = bloodData.map(b => b.recordedAt ? new Date(b.recordedAt).toLocaleDateString('de-DE') : 'Unbekannt');
+        const getVal = (item, field) => (item[field] && typeof item[field].value === 'number') ? item[field].value : null;
+
+        bloodChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Hämoglobin (g/dL)',
+                        data: bloodData.map(b => getVal(b, 'hemoglobin')),
+                        borderColor: '#2563eb', // Blau (Blue-600)
+                        backgroundColor: 'rgba(37, 99, 235, 0.05)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointRadius: 4
+                    },
+                    {
+                        label: 'Erythrozyten (M/µL)',
+                        data: bloodData.map(b => getVal(b, 'erythrocytes')),
+                        borderColor: '#0ea5e9', // Sky-500
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointRadius: 3
+                    },
+                    {
+                        label: 'Leukozyten (K/µL)',
+                        data: bloodData.map(b => getVal(b, 'leukocytes')),
+                        borderColor: '#10b981', // Grün (Emerald-500)
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointRadius: 3
+                    },
+                    {
+                        label: 'Hämatokrit (%)',
+                        data: bloodData.map(b => getVal(b, 'hematocrit')),
+                        borderColor: '#f59e0b', // Gelb/Amber (Amber-500)
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointRadius: 3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: { color: '#334155', font: { size: 11 }, boxWidth: 12 }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(226, 232, 240, 0.8)' },
+                        ticks: { color: '#64748b', font: { size: 11 } }
+                    },
+                    y: {
+                        grid: { color: 'rgba(226, 232, 240, 0.8)' },
+                        ticks: { color: '#64748b', font: { size: 11 } }
+                    }
+                }
+            }
+        });
+    }
+
+    async function handleCreatePatient(event) {
+        event.preventDefault();
+        const payload = {
+            firstName: document.getElementById('firstName').value,
+            lastName: document.getElementById('lastName').value,
+            birthDate: document.getElementById('birthDate').value,
+            gender: document.getElementById('gender').value
+        };
+
+        try {
+            const response = await fetchWithAuth('/api/v1/patients', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error('Fehler beim Speichern');
+
+            document.getElementById('patient-form').reset();
+            loadPatients();
+            alert('Patient erfolgreich angelegt!');
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+</script>
+</body>
+</html>
