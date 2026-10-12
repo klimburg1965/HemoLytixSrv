@@ -34,8 +34,7 @@ public class Patient {
     private String healthInsuranceCompany;
     private String familyDoctor;
 
-    // OneToMany / ManyToOne Relation zur Adresse
-    @ManyToOne(cascade = CascadeType.ALL)
+    @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "address_id")
     private Address address;
 
