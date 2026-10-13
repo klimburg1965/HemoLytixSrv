@@ -82,6 +82,16 @@ Führe alle Unit- und Controller-Tests aus:
 mvn clean test
 ```
 
+## 💻 Frontend & Web-Interface
+
+Das Projekt beinhaltet neben dem Backend ein modernes, leichtgewichtiges Single-File-Web-Frontend (`index.html`), das direkt über den Server ausgeliefert wird und eine intuitive Bedienung für medizinisches Personal ermöglicht:
+
+* **Modernes UI-Design**: Vollständig responsives Layout auf Basis von **Tailwind CSS (CDN)** mit klarer, klinischer Struktur.
+* **Interaktive Datenvisualisierung**: Dynamische Verlaufsdiagramme für Laborwerte (wie Hämoglobin, Erythrozyten, Leukozyten und Hämatokrit) über **Chart.js**.
+* **Zustandsgesteuerte Masken**: Nahtloser Wechsel zwischen Patienten-Stammdaten, Bearbeitungsmodus (Update), Neuerfassung von Patienten (inkl. Adress-Entity in OneToOne-Beziehung) und der Eingabe neuer Blutbilder mit integrierten medizinischen Plausibilitäts-Orientierungen.
+* **Client-seitige JWT-Authentifizierung**: Sichere Anmeldung über REST-Endpunkte mit Token-Speicherung im LocalStorage und automatischer Absicherung aller API-Requests (`fetchWithAuth`).
+* **Direkter PDF-Export**: Generierung und direkte Ansicht des offiziellen Patienten-PDF-Berichts im neuen Browser-Tab via `InputStreamResource` und Blob-Handling.
+
 ---
 
 ## 📄 Lizenz & Zweck
