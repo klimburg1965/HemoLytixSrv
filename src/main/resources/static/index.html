@@ -31,7 +31,10 @@
     <section class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col h-[calc(100vh-7rem)] shadow-xs">
         <div class="flex justify-between items-center mb-3">
             <h2 class="font-medium text-sm text-slate-700">Patienten</h2>
-            <span id="patient-count" class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">0</span>
+            <div class="flex items-center space-x-2">
+                <button onclick="showPatientCreateForm()" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-lg transition font-medium cursor-pointer">+ Neuer Patient</button>
+                <span id="patient-count" class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">0</span>
+            </div>
         </div>
         <div id="patient-list" class="flex-1 overflow-y-auto space-y-2 pr-1">
             <p class="text-sm text-slate-400">Lade Patienten...</p>
@@ -68,6 +71,8 @@
 
 <!-- JavaScript Client Logic -->
 <script>
+    let currentSelectedPatientId = null;
+
     document.addEventListener("DOMContentLoaded", () => {
         const token = localStorage.getItem('jwt_token');
         if (!token) {
@@ -102,15 +107,10 @@
 
     function logout() {
         localStorage.removeItem('jwt_token');
-
-        // Felder im Login-Dialog leeren
         document.getElementById('login-username').value = '';
         document.getElementById('login-password').value = '';
-
-        // Login-Modal wieder einblenden
         document.getElementById('login-modal').classList.remove('hidden');
 
-        // Ansicht zurücksetzen
         document.getElementById('patient-list').innerHTML = '<p class="text-sm text-slate-400 p-2">Bitte anmelden.</p>';
         const detailView = document.getElementById('patient-detail-view');
         detailView.className = "bg-white border border-slate-200 rounded-2xl p-6 flex-1 flex flex-col items-center justify-center text-center shadow-xs";
@@ -168,39 +168,47 @@
     let bloodChart = null;
 
     async function selectPatient(patientId) {
+        currentSelectedPatientId = patientId;
         const detailContainer = document.getElementById('patient-detail-view');
         detailContainer.className = "bg-white border border-slate-200 rounded-2xl p-6 flex-1 flex flex-col text-left overflow-y-auto shadow-xs";
         detailContainer.innerHTML = '<p class="text-sm text-slate-400 text-center py-6">Lade Patientendetails und Blutwerte...</p>';
 
         try {
-            // 1. Patientendetails laden
             const patientResponse = await fetchWithAuth(`/api/v1/patients/${patientId}`);
             if (!patientResponse.ok) throw new Error('Fehler beim Laden der Patientendetails');
             const p = await patientResponse.json();
 
-            // 2. Blutbild-Historie laden
             const bloodResponse = await fetchWithAuth(`/api/v1/patients/${patientId}/complete-blood-counts`);
             const bloodData = bloodResponse.ok ? await bloodResponse.json() : [];
 
             const addressText = p.address
-                ? `${p.address.street || ''}, ${p.address.zipCode || ''} ${p.address.city || ''}`
+                ? `${p.address.street || ''} ${p.address.houseNumber || ''}, ${p.address.zipCode || ''} ${p.address.city || ''}`
                 : 'Keine Adresse hinterlegt';
 
-            // HTML-Struktur mit Chart und dem Formular für neuen Patienten UNTER dem Diagramm
             detailContainer.innerHTML = `
                 <div class="w-full space-y-6">
                     <div class="flex justify-between items-start border-b border-slate-100 pb-3">
                         <div>
                             <h3 class="text-base font-semibold text-slate-900">${p.firstName} ${p.lastName}</h3>
-                            <p class="text-xs text-slate-500 mt-0.5">ID: ${p.id} • Geburtsdatum: ${p.birthDate || 'N/A'} • Geschlecht: ${p.gender || 'N/A'}</p>
+                            <p class="text-xs text-slate-500 mt-0.5">ID: ${p.id} • Geburtsdatum: ${p.birthDate || 'N/A'} • Geschlecht: ${p.gender || 'N/A'} • Blutgruppe: ${p.bloodType || 'N/A'}</p>
                         </div>
-                        <span class="text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200 font-medium">Aktiv</span>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="showBloodCountForm()" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg transition font-medium flex items-center space-x-1 shadow-xs cursor-pointer">
+                                <span>+ Blutbild erfassen</span>
+                            </button>
+                            <button onclick="downloadPdfReport(${p.id}, '${p.firstName}_${p.lastName}')" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg transition font-medium flex items-center space-x-1 shadow-xs cursor-pointer">
+                                <span>PDF-Bericht</span>
+                            </button>
+                            <span class="text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-200 font-medium">Aktiv</span>
+                        </div>
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <h4 class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Adresse & Kontaktdaten</h4>
-                            <p class="text-sm text-slate-700">${addressText}</p>
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                            <h4 class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Stammdaten & Adresse</h4>
+                            <p class="text-sm text-slate-700"><strong>Adresse:</strong> ${addressText}</p>
+                            <p class="text-sm text-slate-700"><strong>Hausarzt:</strong> ${p.familyDoctor || 'Nicht hinterlegt'}</p>
+                            <p class="text-sm text-slate-700"><strong>Krankenkasse:</strong> ${p.healthInsuranceCompany || 'Nicht hinterlegt'}</p>
                         </div>
                         <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <h4 class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Statistik</h4>
@@ -216,43 +224,452 @@
                         </div>
                     </div>
 
-                    <!-- Patient Creation Form (jetzt unter dem Diagramm platziert) -->
+                    <!-- Patientendaten Update Formular -->
                     <div class="bg-slate-50 border border-slate-200 rounded-xl p-5 mt-6">
-                        <h4 class="font-medium text-xs text-slate-700 uppercase tracking-wider mb-4">Neuen Patienten anlegen</h4>
-                        <form id="patient-form" onsubmit="handleCreatePatient(event)" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-xs text-slate-500 mb-1">Vorname</label>
-                                <input type="text" id="firstName" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                        <h4 class="font-medium text-xs text-slate-700 uppercase tracking-wider mb-4">Patientendaten</h4>
+                        <form id="patient-form" onsubmit="handleUpdatePatient(event)" class="space-y-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-1">Vorname</label>
+                                    <input type="text" id="firstName" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-1">Nachname</label>
+                                    <input type="text" id="lastName" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-1">Geburtsdatum (JJJJ-MM-TT)</label>
+                                    <input type="text" id="birthDate" placeholder="1980-05-14" pattern="\\d{4}-\\d{2}-\\d{2}" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-1">Geschlecht (Gender)</label>
+                                    <select id="gender" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                        <option value="MALE">Männlich</option>
+                                        <option value="FEMALE">Weiblich</option>
+                                        <option value="UNSPECIFIED">Unspezifiziert</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-1">Blutgruppe (BloodType)</label>
+                                    <select id="bloodType" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                        <option value="">Keine Angabe</option>
+                                        <option value="A+">A+</option>
+                                        <option value="A-">A-</option>
+                                        <option value="B+">B+</option>
+                                        <option value="B-">B-</option>
+                                        <option value="AB+">AB+</option>
+                                        <option value="AB-">AB-</option>
+                                        <option value="0+">0+</option>
+                                        <option value="0-">0-</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-1">Hausarzt</label>
+                                    <input type="text" id="familyDoctor" placeholder="Dr. med. Mustermann" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-xs text-slate-500 mb-1">Krankenkasse</label>
+                                    <input type="text" id="healthInsuranceCompany" placeholder="AOK, TK, Barmer..." class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                </div>
                             </div>
-                            <div>
-                                <label class="block text-xs text-slate-500 mb-1">Nachname</label>
-                                <input type="text" id="lastName" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+
+                            <div class="border-t border-slate-200 pt-4 mt-4">
+                                <h5 class="font-medium text-xs text-slate-600 uppercase tracking-wider mb-3">Adresse</h5>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div class="sm:col-span-2">
+                                        <label class="block text-xs text-slate-500 mb-1">Straße</label>
+                                        <input type="text" id="street" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">Hausnummer</label>
+                                        <input type="text" id="houseNumber" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">PLZ</label>
+                                        <input type="text" id="zipCode" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    </div>
+                                    <div class="sm:col-span-2">
+                                        <label class="block text-xs text-slate-500 mb-1">Stadt</label>
+                                        <input type="text" id="city" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <label class="block text-xs text-slate-500 mb-1">Geburtsdatum</label>
-                                <input type="date" id="birthDate" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
-                            </div>
-                            <div>
-                                <label class="block text-xs text-slate-500 mb-1">Geschlecht</label>
-                                <select id="gender" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
-                                    <option value="MALE">Männlich</option>
-                                    <option value="FEMALE">Weiblich</option>
-                                    <option value="OTHER">Divers</option>
-                                </select>
-                            </div>
-                            <div class="sm:col-span-2 flex justify-end mt-2">
-                                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs px-4 py-2 rounded-lg transition shadow-xs">Patient speichern</button>
+
+                            <div class="flex justify-end mt-4">
+                                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs px-4 py-2 rounded-lg transition shadow-xs cursor-pointer">Änderungen speichern</button>
                             </div>
                         </form>
                     </div>
                 </div>
             `;
 
+            // Felder befüllen
+            document.getElementById('firstName').value = p.firstName || '';
+            document.getElementById('lastName').value = p.lastName || '';
+            document.getElementById('birthDate').value = p.birthDate || '';
+            document.getElementById('gender').value = p.gender || 'MALE';
+            document.getElementById('bloodType').value = p.bloodType || '';
+            document.getElementById('familyDoctor').value = p.familyDoctor || '';
+            document.getElementById('healthInsuranceCompany').value = p.healthInsuranceCompany || '';
+            if (p.address) {
+                document.getElementById('street').value = p.address.street || '';
+                document.getElementById('houseNumber').value = p.address.houseNumber || '';
+                document.getElementById('zipCode').value = p.address.zipCode || '';
+                document.getElementById('city').value = p.address.city || '';
+            }
+
             renderBloodChart(bloodData);
 
         } catch (err) {
             console.error(err);
             detailContainer.innerHTML = `<p class="text-sm text-red-500 text-center py-6">Fehler beim Laden der Details.</p>`;
+        }
+    }
+
+    // Ansicht für neuen Patienten anlegen
+    function showPatientCreateForm() {
+        currentSelectedPatientId = null;
+        const detailContainer = document.getElementById('patient-detail-view');
+        detailContainer.className = "bg-white border border-slate-200 rounded-2xl p-6 flex-1 flex flex-col text-left overflow-y-auto shadow-xs";
+
+        detailContainer.innerHTML = `
+            <div class="w-full space-y-6">
+                <div class="flex justify-between items-start border-b border-slate-100 pb-3">
+                    <div>
+                        <h3 class="text-base font-semibold text-slate-900">Neuen Patienten anlegen</h3>
+                        <p class="text-xs text-slate-500 mt-0.5">Stammdaten, medizinische Details & Adresse erfassen</p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-5">
+                    <form id="patient-create-form" onsubmit="handleCreatePatient(event)" class="space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Vorname</label>
+                                <input type="text" id="create-firstName" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Nachname</label>
+                                <input type="text" id="create-lastName" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Geburtsdatum (JJJJ-MM-TT)</label>
+                                <input type="text" id="create-birthDate" placeholder="1980-05-14" pattern="\\d{4}-\\d{2}-\\d{2}" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Geschlecht (Gender)</label>
+                                <select id="create-gender" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    <option value="MALE">Männlich</option>
+                                    <option value="FEMALE">Weiblich</option>
+                                    <option value="UNSPECIFIED">Unspezifiziert</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Blutgruppe (BloodType)</label>
+                                <select id="create-bloodType" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    <option value="">Keine Angabe</option>
+                                    <option value="A+">A+</option>
+                                    <option value="A-">A-</option>
+                                    <option value="B+">B+</option>
+                                    <option value="B-">B-</option>
+                                    <option value="AB+">AB+</option>
+                                    <option value="AB-">AB-</option>
+                                    <option value="0+">0+</option>
+                                    <option value="0-">0-</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Hausarzt</label>
+                                <input type="text" id="create-familyDoctor" placeholder="Dr. med. Mustermann" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-xs text-slate-500 mb-1">Krankenkasse</label>
+                                <input type="text" id="create-healthInsuranceCompany" placeholder="AOK, TK, Barmer..." class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                            </div>
+                        </div>
+
+                        <div class="border-t border-slate-200 pt-4 mt-4">
+                            <h5 class="font-medium text-xs text-slate-600 uppercase tracking-wider mb-3">Adresse</h5>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div class="sm:col-span-2">
+                                    <label class="block text-xs text-slate-500 mb-1">Straße</label>
+                                    <input type="text" id="create-street" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600" placeholder="Hauptstraße">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-1">Hausnummer</label>
+                                    <input type="text" id="create-houseNumber" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600" placeholder="12a">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-500 mb-1">PLZ</label>
+                                    <input type="text" id="create-zipCode" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600" placeholder="12345">
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-xs text-slate-500 mb-1">Stadt</label>
+                                    <input type="text" id="create-city" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600" placeholder="Berlin">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end mt-4">
+                            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs px-4 py-2 rounded-lg transition shadow-xs cursor-pointer">Patient speichern</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `;
+    }
+
+    async function showBloodCountForm() {
+        if (!currentSelectedPatientId) return;
+
+        const detailContainer = document.getElementById('patient-detail-view');
+
+        try {
+            const patientResponse = await fetchWithAuth(`/api/v1/patients/${currentSelectedPatientId}`);
+            const p = await patientResponse.json();
+
+            detailContainer.innerHTML = `
+                <div class="w-full space-y-6">
+                    <div class="flex justify-between items-start border-b border-slate-100 pb-3">
+                        <div>
+                            <h3 class="text-base font-semibold text-slate-900">Neues Blutbild erfassen</h3>
+                            <p class="text-xs text-slate-500 mt-0.5">Patient: ${p.firstName} ${p.lastName} (ID: ${p.id})</p>
+                        </div>
+                        <button onclick="selectPatient(${p.id})" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-3 py-1.5 rounded-lg transition font-medium cursor-pointer">
+                            ← Zurück zur Ansicht
+                        </button>
+                    </div>
+
+                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-5">
+                        <form id="blood-count-form" onsubmit="handleCreateBloodCount(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Erfassungsdatum & Uhrzeit</label>
+                                <input type="datetime-local" id="recordedAt" required class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                            </div>
+
+                            <div class="border-t border-slate-200 pt-3">
+                                <h5 class="font-medium text-xs text-slate-600 uppercase tracking-wider mb-3">Rotes Blutbild & Indizes (Plausible Bereiche als Orientierung)</h5>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">Hämoglobin (g/dL)</label>
+                                        <input type="number" step="0.1" id="hemoglobin" placeholder="z.B. 14.0 (11-17)" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">Erythrozyten (M/µL)</label>
+                                        <input type="number" step="0.01" id="erythrocytes" placeholder="z.B. 4.8 (3.5-6.0)" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">Hämatokrit (%)</label>
+                                        <input type="number" step="0.1" id="hematocrit" placeholder="z.B. 42.0 (32-52)" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">MCV (fl)</label>
+                                        <input type="number" step="0.1" id="mcv" placeholder="z.B. 90.0 (75-105)" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">MCH (pg)</label>
+                                        <input type="number" step="0.1" id="mch" placeholder="z.B. 30.0 (25-35)" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">MCHC (g/dL)</label>
+                                        <input type="number" step="0.1" id="mchc" placeholder="z.B. 33.0 (30-38)" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border-t border-slate-200 pt-3">
+                                <h5 class="font-medium text-xs text-slate-600 uppercase tracking-wider mb-3">Leukozyten & Thrombozyten</h5>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">Leukozyten (K/µL)</label>
+                                        <input type="number" step="0.1" id="leukocytes" placeholder="z.B. 6.5 (3.0-15.0)" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">Thrombozyten (K/µL)</label>
+                                        <input type="number" step="1" id="platelets" placeholder="z.B. 250 (100-500)" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border-t border-slate-200 pt-3">
+                                <h5 class="font-medium text-xs text-slate-600 uppercase tracking-wider mb-3">Differentialblutbild (%)</h5>
+                                <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">Neutrophile</label>
+                                        <input type="number" step="0.1" id="neutrophilsRel" placeholder="%" class="w-full bg-white border border-slate-300 rounded-lg px-2 py-2 text-sm text-slate-900">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">Lymphozyten</label>
+                                        <input type="number" step="0.1" id="lymphocytesRel" placeholder="%" class="w-full bg-white border border-slate-300 rounded-lg px-2 py-2 text-sm text-slate-900">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">Monozyten</label>
+                                        <input type="number" step="0.1" id="monocytesRel" placeholder="%" class="w-full bg-white border border-slate-300 rounded-lg px-2 py-2 text-sm text-slate-900">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">Eosinophile</label>
+                                        <input type="number" step="0.1" id="eosinophilsRel" placeholder="%" class="w-full bg-white border border-slate-300 rounded-lg px-2 py-2 text-sm text-slate-900">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-slate-500 mb-1">Basophile</label>
+                                        <input type="number" step="0.1" id="basophilsRel" placeholder="%" class="w-full bg-white border border-slate-300 rounded-lg px-2 py-2 text-sm text-slate-900">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-slate-500 mb-1">Notizen / Befund</label>
+                                <textarea id="notes" rows="2" placeholder="Optionale Bemerkungen..." class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-blue-600"></textarea>
+                            </div>
+
+                            <div class="flex justify-end mt-4">
+                                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs px-4 py-2 rounded-lg transition shadow-xs cursor-pointer">Blutbild speichern</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            document.getElementById('recordedAt').value = now.toISOString().slice(0, 16);
+
+        } catch (err) {
+            console.error(err);
+            alert('Fehler beim Laden der Ansicht.');
+        }
+    }
+
+    async function handleCreateBloodCount(event) {
+        event.preventDefault();
+        if (!currentSelectedPatientId) return;
+
+        const getNum = (id) => {
+            const val = document.getElementById(id).value;
+            return val ? parseFloat(val) : null;
+        };
+
+        const payload = {
+            recordedAt: document.getElementById('recordedAt').value ? document.getElementById('recordedAt').value + ':00' : null,
+            hemoglobin: getNum('hemoglobin'),
+            erythrocytes: getNum('erythrocytes'),
+            hematocrit: getNum('hematocrit'),
+            mcv: getNum('mcv'),
+            mch: getNum('mch'),
+            mchc: getNum('mchc'),
+            leukocytes: getNum('leukocytes'),
+            platelets: getNum('platelets'),
+            neutrophilsRel: getNum('neutrophilsRel'),
+            lymphocytesRel: getNum('lymphocytesRel'),
+            monocytesRel: getNum('monocytesRel'),
+            eosinophilsRel: getNum('eosinophilsRel'),
+            basophilsRel: getNum('basophilsRel'),
+            notes: document.getElementById('notes').value || null
+        };
+
+        try {
+            const response = await fetchWithAuth(`/api/v1/patients/${currentSelectedPatientId}/complete-blood-counts`, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(errText || 'Fehler beim Speichern des Blutbildes');
+            }
+
+            alert('Blutbild erfolgreich gespeichert und analysiert!');
+            selectPatient(currentSelectedPatientId);
+        } catch (err) {
+            alert('Speichern fehlgeschlagen: ' + err.message);
+        }
+    }
+
+    async function handleUpdatePatient(event) {
+        event.preventDefault();
+        if (!currentSelectedPatientId) return;
+
+        const payload = {
+            firstName: document.getElementById('firstName').value,
+            lastName: document.getElementById('lastName').value,
+            birthDate: document.getElementById('birthDate').value,
+            gender: document.getElementById('gender').value,
+            bloodType: document.getElementById('bloodType').value || null,
+            familyDoctor: document.getElementById('familyDoctor').value || null,
+            healthInsuranceCompany: document.getElementById('healthInsuranceCompany').value || null,
+            address: {
+                street: document.getElementById('street').value,
+                houseNumber: document.getElementById('houseNumber').value,
+                zipCode: document.getElementById('zipCode').value,
+                city: document.getElementById('city').value
+            }
+        };
+
+        try {
+            const response = await fetchWithAuth(`/api/v1/patients/${currentSelectedPatientId}`, {
+                method: 'PUT',
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error('Fehler beim Aktualisieren');
+
+            alert('Patientendaten erfolgreich aktualisiert!');
+            loadPatients();
+            selectPatient(currentSelectedPatientId);
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+
+    async function handleCreatePatient(event) {
+        event.preventDefault();
+        const payload = {
+            firstName: document.getElementById('create-firstName').value,
+            lastName: document.getElementById('create-lastName').value,
+            birthDate: document.getElementById('create-birthDate').value,
+            gender: document.getElementById('create-gender').value,
+            bloodType: document.getElementById('create-bloodType').value || null,
+            familyDoctor: document.getElementById('create-familyDoctor').value || null,
+            healthInsuranceCompany: document.getElementById('create-healthInsuranceCompany').value || null,
+            address: {
+                street: document.getElementById('create-street').value,
+                houseNumber: document.getElementById('create-houseNumber').value,
+                zipCode: document.getElementById('create-zipCode').value,
+                city: document.getElementById('create-city').value
+            }
+        };
+
+        try {
+            const response = await fetchWithAuth('/api/v1/patients', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error('Fehler beim Speichern');
+
+            alert('Patient erfolgreich angelegt!');
+            loadPatients();
+            document.getElementById('patient-create-form').reset();
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+
+    async function downloadPdfReport(patientId, patientName) {
+        try {
+            const response = await fetchWithAuth(`/api/v1/patients/${patientId}/report`, {
+                method: 'GET'
+            });
+
+            if (!response.ok) throw new Error('Fehler beim Generieren des PDF-Berichts');
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+        } catch (err) {
+            console.error(err);
+            alert('Konnte PDF nicht öffnen: ' + err.message);
         }
     }
 
@@ -279,7 +696,7 @@
                     {
                         label: 'Hämoglobin (g/dL)',
                         data: bloodData.map(b => getVal(b, 'hemoglobin')),
-                        borderColor: '#2563eb', // Blau (Blue-600)
+                        borderColor: '#2563eb',
                         backgroundColor: 'rgba(37, 99, 235, 0.05)',
                         borderWidth: 2,
                         tension: 0.3,
@@ -288,7 +705,7 @@
                     {
                         label: 'Erythrozyten (M/µL)',
                         data: bloodData.map(b => getVal(b, 'erythrocytes')),
-                        borderColor: '#0ea5e9', // Sky-500
+                        borderColor: '#0ea5e9',
                         backgroundColor: 'transparent',
                         borderWidth: 2,
                         tension: 0.3,
@@ -297,7 +714,7 @@
                     {
                         label: 'Leukozyten (K/µL)',
                         data: bloodData.map(b => getVal(b, 'leukocytes')),
-                        borderColor: '#10b981', // Grün (Emerald-500)
+                        borderColor: '#10b981',
                         backgroundColor: 'transparent',
                         borderWidth: 2,
                         tension: 0.3,
@@ -305,8 +722,8 @@
                     },
                     {
                         label: 'Hämatokrit (%)',
-                        data: bloodData.map(b => getVal(b, 'hematocrit')),
-                        borderColor: '#f59e0b', // Gelb/Amber (Amber-500)
+                        data: bloodData.map(b => b.hematocrit ? b.hematocrit.value : null),
+                        borderColor: '#f59e0b',
                         backgroundColor: 'transparent',
                         borderWidth: 2,
                         tension: 0.3,
@@ -336,31 +753,6 @@
                 }
             }
         });
-    }
-
-    async function handleCreatePatient(event) {
-        event.preventDefault();
-        const payload = {
-            firstName: document.getElementById('firstName').value,
-            lastName: document.getElementById('lastName').value,
-            birthDate: document.getElementById('birthDate').value,
-            gender: document.getElementById('gender').value
-        };
-
-        try {
-            const response = await fetchWithAuth('/api/v1/patients', {
-                method: 'POST',
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) throw new Error('Fehler beim Speichern');
-
-            document.getElementById('patient-form').reset();
-            loadPatients();
-            alert('Patient erfolgreich angelegt!');
-        } catch (err) {
-            alert(err.message);
-        }
     }
 </script>
 </body>
