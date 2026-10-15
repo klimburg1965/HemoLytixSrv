@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: hemolytix-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - JWT_SECRET=4a8d9f1e3b5c7a2d4e6f8a0bc2d4e6f8a0b2c4d6e8f0a2b4c6d8e0f2a4b6c8d0!
+      - JWT_EXPIRATION_MS=86400000
+    restart: always
